@@ -1,277 +1,100 @@
-# Novelist Application Architecture
+# Novelist architecture
 
-## Table of Contents
-- [Overview](#overview)
-- [Current Architecture](#current-architecture)
-- [Technology Stack](#technology-stack)
-- [Layer Responsibilities](#layer-responsibilities)
-- [Neo4j Graph Model](#neo4j-graph-model)
-- [Event Publishing](#event-publishing)
-- [Data Flow](#data-flow)
-- [Architectural Decisions](#architectural-decisions)
+Reviewed: 2026-10-02. Scope: the current working tree, including existing local changes. This is a source review, not a verification of a running deployment.
 
-## Overview
+Novelist is a modular monolith: a React browser application calls one FastAPI application, which stores application data and semantic-search vectors in Neo4j. RabbitMQ is an optional outbound event integration. There are no event consumers, background indexing workers, or language-model generation services in this repository.
 
-Novelist is a full-stack book-management application. The **backend** is a Python 3.13 / FastAPI modular monolith; the **frontend** is a React 18 / Vite / TypeScript single-page application. The backend uses Neo4j for persistence, RabbitMQ for optional domain-event publishing, and a local sentence-transformers model for RAG semantic search.
+Important choices and their consequences are recorded in [Architectural decisions](ARCHITECTURAL_DECISIONS.md). Existing ADR identifiers 001–007 are retained there. The other files in `spec/` contain older design material; where they disagree, use this reviewed overview and the linked implementation for current behavior.
 
-### Key Capabilities
-- Book and user management (full CRUD)
-- Rating and review system with relationship properties
-- Reading analytics (trending books, genre stats, per-book stats)
-- Graph-based collaborative-filtering recommendations
-- JWT authentication with bcrypt password hashing and server-side refresh-token revocation
-- Prometheus metrics and health check endpoints
-- Optional domain-event publishing over RabbitMQ (persistent connection, auto-reconnect)
-- RAG semantic search: local embeddings, Neo4j vector index, chat-style UI
-- React UI: book browsing, add/rate/review, profile, trending analytics, AI search chat
-
-## Current Architecture
-
-### Modular Monolith
+## Runtime and dependencies
 
 ```mermaid
-graph TB
-    UI[React UI<br/>Vite · TypeScript · React Query]
-    API[FastAPI Routers<br/>books · users · ratings · analytics · recommendations · auth · profile · rag]
-    Service[Service Layer<br/>per-feature services]
-    Repo[Repository Layer<br/>feature mixins → NovelistRepository]
-    Neo4j[(Neo4j 5<br/>Graph Database + Vector Index)]
-    MQ[RabbitMQ<br/>optional]
-    Prometheus[Prometheus<br/>metrics]
-
-    UI -->|HTTP/REST + Bearer JWT| API
-    API -->|use-case calls| Service
-    Service -->|Cypher queries| Repo
-    Repo -->|Bolt| Neo4j
-    Service -->|domain events| MQ
-    API -.->|/actuator/prometheus| Prometheus
-
-    style UI fill:#ede9fe
-    style API fill:#e1f5ff
-    style Service fill:#fff3e0
-    style Repo fill:#f3e5f5
-    style Neo4j fill:#e8f5e9
+flowchart LR
+    Browser[React SPA] -->|JSON / Bearer JWT| API[FastAPI routers]
+    API --> Services[Feature services]
+    API -->|Some CRUD and read paths| Repository[Composed Neo4j repository]
+    Services --> Repository
+    Services --> Embeddings[Local sentence-transformers model]
+    Repository -->|Bolt / Cypher| DB[(Neo4j graph and vectors)]
+    Services --> Publisher[Optional synchronous publisher]
+    Publisher --> RabbitMQ[RabbitMQ topic exchange]
+    Prometheus[Prometheus] -->|Scrapes metrics| API
 ```
 
-### Directory Layout
+| Boundary | Implementation and responsibility |
+| --- | --- |
+| Browser | React 19, TypeScript, Vite, React Router, TanStack Query, Axios. Pages and components own interaction state; Query owns fetched data. See [package manifest](../ui/package.json) and [application composition](../ui/src/App.tsx). |
+| HTTP | Feature routers validate requests, authenticate callers, apply selected ownership checks, and serialize responses. Auth routes use `/auth`; business routes use `/api/v1`. |
+| Use cases | Services orchestrate repository calls and selected events through feature-specific Python `Protocol` ports. Books reads and much of users CRUD call the concrete repository directly from routers. |
+| Persistence | Feature repository mixins compose into one [NovelistRepository](../app/infrastructure/neo4j/repository.py). Mixins share query helpers and sometimes call one another. There are no separate feature databases. |
+| Process lifecycle | [Lifespan](../app/main.py) creates one repository and publisher per application process and closes them on shutdown. Dependency factories create services per request. The repository's “request-scoped” docstring does not describe its actual lifetime. |
+| External work | Neo4j queries, RabbitMQ publishing, and embeddings are synchronous. Indexing completes within the HTTP request. |
 
-```
-app/
-├── main.py                      # Bootstrap: lifespan, router registration, exception handlers
-├── core/
-│   ├── config.py                # pydantic-settings — reads .env / env vars; cors_origins parsed as str
-│   ├── dependencies.py          # FastAPI Depends factories (Repo, Publisher, Services)
-│   ├── http.py                  # error() helper for consistent JSONResponse errors
-│   ├── pagination.py            # PageOut make_page helper
-│   └── security.py              # JWT encode/decode, bcrypt hashing, HTTPBearer, require_self()
-├── infrastructure/
-│   ├── neo4j/
-│   │   ├── base.py              # Neo4jRepository, NotFoundError, ConflictError, Cypher helpers
-│   │   └── repository.py        # NovelistRepository — composed from all feature mixins
-│   └── messaging/
-│       └── publisher.py         # EventPublisher (persistent pika connection, auto-reconnect)
-└── modules/
-    ├── auth/                    # register, login → JWT (access + refresh with revocation)
-    ├── books/                   # CRUD + paginated search with 7 filter/sort params
-    ├── users/                   # CRUD + preferences; mutations require caller == userId
-    ├── ratings/                 # add rating+review; requires caller == userId
-    ├── analytics/               # book stats (BookStatsOut), trending, genre breakdown (GenreCountOut)
-    ├── recommendations/         # graph-based collaborative filtering
-    ├── profile/                 # GET /api/v1/me
-    ├── rag/                     # chunk+embed index, Neo4j vector search
-    └── shared/                  # APIModel base, PageOut, Preferences schemas
+The [Dockerfile](../Dockerfile) runs Python 3.13 and one Uvicorn process as a non-root user. It caches the default embedding model during image construction. [Compose](../docker-compose.yml) defines API, Neo4j 5.15.0, RabbitMQ, Prometheus, and Grafana services with persistent data volumes. The UI runs separately; a production UI hosting arrangement is not supplied.
 
-ui/src/
-├── api/                         # Typed axios client: auth, books, ratings, analytics, profile, rag
-├── context/AuthContext.tsx      # JWT login/logout/register; decodes userId from token
-├── components/
-│   ├── AppShell.tsx             # Sidebar nav (Books, Trending, Profile, AI Search) + sign-out
-│   ├── AddBookModal.tsx         # Book creation form
-│   ├── RateReviewModal.tsx      # Star picker (1–5) + review textarea
-│   └── ProtectedRoute.tsx       # Redirects unauthenticated users to /login
-└── pages/
-    ├── AuthPages.tsx            # Login + Register forms
-    ├── BooksPage.tsx            # Paginated grid, search, filter, sort; Add Book
-    ├── BookDetailPage.tsx       # Metadata, live stats, Rate & Review, Delete
-    ├── ProfilePage.tsx          # Identity card + full reading history
-    ├── TrendingPage.tsx         # Top-10 ranking + genre bar chart
-    └── ChatPage.tsx             # Chat-style RAG semantic search
-```
+## Feature boundaries
 
-Each module follows the same internal layout:
+| Module | Main behavior |
+| --- | --- |
+| `auth` | Registration, bcrypt password verification, access/refresh JWT issuance, persisted refresh-token revocation. |
+| `books` | Shared catalog CRUD, case-insensitive substring search, filters, offset pagination, optional rating aggregation. |
+| `users` / `profile` | User CRUD, JSON-encoded preferences, current-user profile and rating history. |
+| `articles` | Owner-only versioned drafts, explicit published snapshots, public story feeds and safe author projections. See [publishing](ARTICLE_PUBLISHING.md). |
+| `ratings` | Upsert a user's rating/review for a book; book reviews and paginated current-user rated books. |
+| `analytics` | Query-time rating averages/counts, trending ordered by count × average, book counts per genre. |
+| `recommendations` | Traverse users who share highly rated books; rank unseen books by matching path count. No trained recommendation model or cold-start fallback. |
+| `rag` | Explicitly chunk and embed stored book content; retrieve similar chunks with Neo4j cosine vector search. Despite the module name, there is no generated answer or conversational memory on the server. |
 
-```
-<module>/
-├── ports.py       # Protocol interfaces (dependency-inversion boundary)
-├── schemas.py     # Pydantic request/response models
-├── service.py     # Use-case logic; depends on ports
-├── repository.py  # Neo4j mixin; implements the port
-└── router.py      # FastAPI router; calls service via DI
-```
-
-## Technology Stack
-
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| Language | Python | 3.13 |
-| Framework | FastAPI | ≥0.115 |
-| Data validation | Pydantic v2 / pydantic-settings | ≥2.3 |
-| Database | Neo4j | 5 (Bolt) |
-| DB driver | neo4j (official Python driver) | ≥5.24 |
-| Auth | python-jose (JWT) + passlib/bcrypt | ≥3.3 / ≥1.7 |
-| Messaging | pika (RabbitMQ AMQP) | ≥1.3 |
-| Metrics | prometheus-fastapi-instrumentator | ≥8.0 |
-| ASGI server | uvicorn | ≥0.30 |
-| Tests | pytest | ≥7.0 |
-| Containerization | Docker + Docker Compose | — |
-
-## Layer Responsibilities
-
-### Router Layer (`router.py`)
-- HTTP request/response handling
-- Input validation via Pydantic models (automatic with FastAPI)
-- HTTP status codes
-- Delegates all logic to the service layer
-
-### Service Layer (`service.py`)
-- Business-logic implementation
-- Calls repository port methods
-- Publishes domain events via `EventPublisher`
-- Raises `NotFoundError` / `ConflictError` — handled centrally in `main.py`
-
-### Repository Layer (`repository.py` mixins)
-- All Cypher query construction
-- Maps raw Neo4j records to plain `dict` via `node()` helper
-- Composed into `NovelistRepository` at startup
-
-### Infrastructure Layer
-- `Neo4jRepository` — connection lifecycle, `_one` / `_all` query helpers
-- `EventPublisher` — fire-and-forget RabbitMQ publish; AMQP errors are logged, never surfaced to callers
-
-## Neo4j Graph Model
-
-### Current Model
+## Persisted model
 
 ```mermaid
-graph LR
-    User((User))
-    Book((Book))
-
-    User -->|RATED<br/>rating: Integer<br/>timestamp: DateTime| Book
-
-    style User fill:#e3f2fd
-    style Book fill:#fff3e0
+flowchart LR
+    User[User] -->|RATED| Book[Book]
+    Book -->|HAS_CHUNK| Chunk[BookChunk]
+    Article[Article] -.->|ownerId property reference| User
+    Token[RefreshToken] -.->|userId property reference| User
 ```
 
-### Node Properties
+- `User`: UUID `userId`, identity fields, `passwordHash` for registered accounts, timestamps, and `preferencesJson`. Preferences are decoded to an object for API responses.
+- `Article`: UUID ID, owner ID, JSON draft/public snapshots, revision counters and timestamps.
+- `Book`: UUID `bookId`, metadata, genres, cover URL, full `content`, and timestamps.
+- `RATED`: rating, optional review, initial timestamp, and helpful count. `MERGE` updates the existing relationship for the user/book pair; changing a rating preserves its initial timestamp.
+- `BookChunk`: book ID, chunk ordinal, text, and embedding vector. Chunks link from the book through `HAS_CHUNK`.
+- `RefreshToken`: `jti`, user ID, expiry, revocation flag, and creation time. This node has no relationship to `User` and is not removed by user deletion.
 
-**User**
-```cypher
-(:User {
-  userId:    String,   // UUID
-  name:      String,
-  email:     String,   // unique
-  password:  String,   // bcrypt hash
-  age:       Integer,
-  preferences: Map,    // favoriteGenres, favoriteAuthors, annualReadingGoal, …
-  createdAt: DateTime,
-  updatedAt: DateTime
-})
-```
+Source: feature [repositories](../app/modules) and [shared query helpers](../app/infrastructure/neo4j/base.py). Application code creates the RAG vector index and lazily installs the article ID uniqueness constraint before the first article write. The constraints and ordinary indexes shown in the older database specification are not automatically installed by startup or Compose. Email/ISBN checks are separate read-before-write queries, so they do not ensure uniqueness under concurrent requests.
 
-**Book**
-```cypher
-(:Book {
-  bookId:       String,   // UUID
-  title:        String,
-  author:       String,
-  isbn:         String,   // optional, unique when present
-  publishedYear: Integer,
-  description:  String,
-  language:     String,   // ISO 639-1
-  pageCount:    Integer,
-  genres:       List<String>,
-  createdAt:    DateTime,
-  updatedAt:    DateTime
-})
-```
+## Main request flows
 
-**RATED relationship**
-```cypher
-(:User)-[:RATED { rating: Integer (1–5), timestamp: DateTime }]->(:Book)
-```
+**Book write:** bearer authentication → Pydantic validation → `BookService` → Neo4j mutation → synchronous event publish → response. Only `book.created`, `book.updated`, `book.deleted`, and `rating.added` are emitted. There is no database/message transaction; a successful database change can have no corresponding event.
 
-### Constraints & Indexes
-```cypher
-CREATE CONSTRAINT user_id_unique   IF NOT EXISTS FOR (u:User) REQUIRE u.userId IS UNIQUE;
-CREATE CONSTRAINT user_email_unique IF NOT EXISTS FOR (u:User) REQUIRE u.email  IS UNIQUE;
-CREATE CONSTRAINT book_id_unique   IF NOT EXISTS FOR (b:Book) REQUIRE b.bookId IS UNIQUE;
-CREATE INDEX book_title_index      IF NOT EXISTS FOR (b:Book) ON (b.title);
-CREATE INDEX book_author_index     IF NOT EXISTS FOR (b:Book) ON (b.author);
-```
+**Authentication:** login verifies `passwordHash`, persists refresh-token metadata, and returns both JWTs. Access-token verification checks signature, expiry, and token type without looking up the user. Refresh checks the JWT and stored revocation flag and issues another access token without rotating the refresh token. Logout revokes the submitted refresh token; existing access tokens remain valid until expiry. The browser stores tokens in `localStorage` and redirects to login on 401; it does not automatically refresh them.
 
-## Event Publishing
+**Semantic indexing/search:** `/rag/index` loads a book, lazily loads the local embedding model and creates the vector index if needed, splits content into overlapping character chunks, embeds them, then replaces stored chunks. `/rag/search` embeds the query and returns scored chunks with current book metadata. Book creation/update does not automatically index content. Chunk deletion and insertion are separate database operations.
 
-The `EventPublisher` maintains a **persistent `pika` connection** to a durable topic exchange `novelist.domain.exchange`. On AMQP failure it logs a warning, reconnects once, and retries — if the second attempt also fails the error is swallowed so a broker outage never fails an API write. The connection is cleanly closed during the FastAPI lifespan shutdown. RabbitMQ publishing is **optional** — set `RABBITMQ_ENABLED=false` to disable entirely.
+## API and operational contracts
 
-| Routing key | Trigger |
-|-------------|---------|
-| `book.created` | POST /api/v1/books |
-| `book.updated` | PUT /api/v1/books/{id} |
-| `book.deleted` | DELETE /api/v1/books/{id} |
-| `user.created` | POST /api/v1/users |
-| `rating.added` | POST /api/v1/users/{userId}/ratings/{bookId} |
+[APIModel](../app/modules/shared/schemas.py) maps snake_case Python fields to camelCase JSON and accepts field names as input. Auth token schemas use snake_case. Collection responses use a shared page envelope with zero-based pages and sizes of 1–100; the legacy envelope has `content: list[Any]`. Articles instead use a typed summary page to filter content explicitly. Validation errors return 400, repository not-found/conflict errors return 404/409, and `HTTPException` uses FastAPI's separate `detail` envelope.
 
-## Data Flow
+Configuration uses cached Pydantic settings loaded from environment and `.env`; CORS accepts a string parsed as comma-separated values or a JSON array. The frontend API origin is currently hard-coded to `http://localhost:8081` in [client.ts](../ui/src/api/client.ts).
 
-### Book Creation
+Startup logs and tolerates Neo4j connectivity failure. `/actuator/health` checks Neo4j and returns 503 on failure; it does not verify RabbitMQ, the embedding model, or vector-index readiness. Prometheus scrapes HTTP instrumentation at `/actuator/prometheus`. Structlog configures JSON output outside DEBUG. SlowAPI uses IP-based limits with its default in-memory storage. These are process-local controls, not shared limits across replicas.
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Router
-    participant Service
-    participant Repository
-    participant Neo4j
-    participant EventPublisher
-    participant RabbitMQ
+## Review findings and follow-up priorities
 
-    Client->>Router: POST /api/v1/books (BookCreate)
-    Router->>Service: create_book(payload)
-    Service->>Repository: create_book(dict)
-    Repository->>Neo4j: CREATE (b:Book) SET b = $props
-    Neo4j-->>Repository: Book node
-    Repository-->>Service: dict
-    Service->>EventPublisher: publish("book.created", payload)
-    EventPublisher->>RabbitMQ: JSON message (fire-and-forget)
-    Service-->>Router: BookOut
-    Router-->>Client: 201 Created
-```
+These are findings and suggested follow-ups, not implemented changes or approved future decisions.
 
-## Architectural Decisions
+| Priority | Finding and effect | Follow-up |
+| --- | --- | --- |
+| High | User list/search returns repository dictionaries through `PageOut.content: list[Any]`. `_user_out` retains `passwordHash`, so registered users' hashes can be returned to any authenticated caller. | Apply explicit safe user serialization to every response path and add a regression test with real-shaped repository data. |
+| High | Legacy user/book identity constraints are not installed; concurrent email/ISBN checks can both pass. Article IDs have a separate uniqueness constraint. | Introduce versioned schema setup and database-enforced identity rules, including a consistent email normalization policy. |
+| High | A process-wide `pika.BlockingConnection`/channel is reused from synchronous request handlers without thread ownership or serialization. | Establish a dedicated publisher execution context or other concurrency-safe adapter; test concurrent writes and reconnects. |
+| Medium | Event publishing follows committed writes, has no outbox/confirm protocol, and may delay HTTP requests during connection attempts. | Keep events explicitly best effort, or adopt an outbox and delivery policy if consumers become correctness-critical. |
+| Medium | Chunk replacement is non-atomic; content edits leave stale vectors, and deleting a book leaves orphan chunk nodes. Orphans can occupy vector top-k slots before the query joins back to books. | Define an atomic indexing lifecycle, invalidation, and cascading cleanup; test failure and deletion cases. |
+| Medium | JWT validation does not check whether a user still exists; deletion does not revoke refresh-token nodes. Browser logout does not clear the shared Query cache. | Define account deletion/session invalidation semantics and clear or partition user-specific browser caches. |
+| Medium | All authenticated callers can modify/delete shared books and index content; ownership checks apply only to selected user mutations and rating writes. | Confirm that shared-catalog editing is intended before exposing the service to untrusted users. |
+| Medium | Compose requires RabbitMQ even though publishing is optional, and its API healthcheck invokes `wget`, which the Dockerfile does not install. | Align deployment dependencies with the optional-broker policy and provide a healthcheck executable guaranteed to exist in the image. |
 
-### ADR-001: Modular monolith over microservices
-Microservices introduce distributed-systems overhead that is not justified at the current scale. The modular structure uses `Protocol` ports to keep feature boundaries clean and makes a future service split straightforward.
+## Evidence and verification limits
 
-### ADR-002: RabbitMQ topic exchange (optional)
-RabbitMQ is simpler to operate than Kafka for the current event volume. Disabling it via `RABBITMQ_ENABLED=false` lets the API run without any message broker dependency (e.g. in tests).
-
-### ADR-003: Neo4j graph database
-Graph traversals are the natural query shape for ratings, recommendations, and social relationships between users and books. Neo4j's vector index support also makes it the preferred backend for future RAG embeddings.
-
-### ADR-004: JWT authentication (python-jose + passlib)
-Stateless HS256 tokens. Bcrypt hashing via passlib. The `HTTPBearer` dependency in `core/security.py` is used as a FastAPI `Depends` on any protected route.
-
-## ADR-005: React + Vite SPA for the frontend
-The UI is a separate Vite dev server (port 5173) rather than server-rendered HTML. This keeps the backend a pure JSON API, allows the UI to be deployed independently (CDN, static hosting), and enables the React Query cache to avoid redundant fetches. The backend's CORS middleware permits the dev origin; production deployments should set `CORS_ORIGINS` explicitly.
-
-## ADR-006: Authorization — caller must own the resource (`require_self`)
-`PUT/DELETE /users/{userId}` and `POST /users/{userId}/ratings/{bookId}` validate that the JWT subject matches the URL `userId`. This is enforced by [`core/security.require_self()`](../app/core/security.py) called at the top of each mutating route handler, returning HTTP 403 on mismatch.
-
-## ADR-007: `CORS_ORIGINS` stored as `str`, parsed by `cors_origins_list`
-`pydantic-settings` JSON-decodes any field typed as `list[str]` before validators run, so a bare `*` env var causes a startup crash. `cors_origins` is stored as a plain `str` field; the `@computed_field cors_origins_list` property parses it at access time, accepting `*`, comma-separated origins, or a JSON array.
-
----
-
-**Last Updated**: 2026-08-16
-**Status**: Current
+The review traces entrypoints, dependency wiring, services, repositories, UI auth/cache behavior, and deployment configuration. [Service unit tests](../tests/unit/test_services.py) use stubs. The API suites in [test_api_integration.py](../tests/test_api_integration.py) and [test_api_coverage.py](../tests/test_api_coverage.py) replace repositories/publishers; RAG tests also mock the service. These tests check application contracts but do not establish real Cypher correctness, broker reliability, embedding/index compatibility, or container readiness. No live infrastructure verification was performed for this documentation update.

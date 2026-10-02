@@ -230,12 +230,9 @@ def test_create_and_list_books(client):
 def test_user_and_rating_flow(client):
     headers = auth_headers(client)
 
-    # create user
-    user_payload = {"name": "Alice", "email": "alice@example.com", "age": 30}
-    ru = client.post("/api/v1/users", json=user_payload, headers=headers)
-    assert ru.status_code == 201
-    user = ru.json()
-    user_id = user.get("userId") or user.get("user_id")
+    # Ratings belong to the authenticated reader, not an unrelated user.
+    user = client.get("/api/v1/me", headers=headers).json()
+    user_id = user["userId"]
 
     # create book
     book_payload = {"title": "Rateable", "author": "Auth", "pageCount": 50}

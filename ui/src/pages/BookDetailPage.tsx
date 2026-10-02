@@ -1,244 +1,28 @@
-import React, { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { booksApi } from "../api/books";
-import { analyticsApi } from "../api/analytics";
-import type { Book, BookStats } from "../api/types";
-import { Star, ArrowLeft, BookOpen, Calendar, Hash, FileText, Tag } from "lucide-react";
-import { RateReviewModal } from "../components/RateReviewModal";
-import { useAuth } from "../context/AuthContext";
-
-export function BookDetailPage() {
-  const { bookId } = useParams<{ bookId: string }>();
-  const navigate = useNavigate();
-  const { userId } = useAuth();
-  const queryClient = useQueryClient();
-  const [showRate, setShowRate] = useState(false);
-
-  const { data: book, isLoading } = useQuery<Book>({
-    queryKey: ["book", bookId],
-    queryFn: () => booksApi.get(bookId!),
-    enabled: !!bookId,
-  });
-
-  const { data: stats } = useQuery<BookStats>({
-    queryKey: ["bookStats", bookId],
-    queryFn: () => analyticsApi.bookStats(bookId!),
-    enabled: !!bookId,
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: () => booksApi.delete(bookId!),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["books"] });
-      navigate("/books");
-    },
-  });
-
-  if (isLoading) return <div style={styles.loading}>Loading…</div>;
-  if (!book) return <div style={styles.loading}>Book not found.</div>;
-
-  return (
-    <div>
-      <button style={styles.back} onClick={() => navigate(-1)}>
-        <ArrowLeft size={16} />
-        Back
-      </button>
-
-      <div style={styles.layout}>
-        {/* Cover */}
-        <div style={styles.coverWrap}>
-          {book.coverImageUrl ? (
-            <img src={book.coverImageUrl} alt={book.title} style={styles.coverImg} />
-          ) : (
-            <div style={styles.coverPlaceholder}>
-              <span style={styles.coverInitial}>{book.title[0]}</span>
-            </div>
-          )}
-        </div>
-
-        {/* Details */}
-        <div style={styles.details}>
-          <h1 style={styles.title}>{book.title}</h1>
-          <p style={styles.author}>by {book.author}</p>
-
-          {/* Ratings summary */}
-          <div style={styles.ratingBox}>
-            <div style={styles.ratingBig}>
-              <Star size={20} color="#f59e0b" fill="#f59e0b" />
-              <span style={styles.ratingNum}>
-                {stats?.averageRating != null
-                  ? stats.averageRating.toFixed(1)
-                  : book.averageRating != null
-                  ? book.averageRating.toFixed(1)
-                  : "—"}
-              </span>
-            </div>
-            <span style={styles.ratingCount}>
-              {(stats?.totalRatings ?? book.totalRatings ?? 0)} ratings
-            </span>
-          </div>
-
-          {/* Meta */}
-          <div style={styles.metaGrid}>
-            {book.publishedYear && (
-              <MetaItem icon={<Calendar size={14} />} label="Year" value={String(book.publishedYear)} />
-            )}
-            {book.pageCount && (
-              <MetaItem icon={<BookOpen size={14} />} label="Pages" value={String(book.pageCount)} />
-            )}
-            {book.isbn && (
-              <MetaItem icon={<Hash size={14} />} label="ISBN" value={book.isbn} />
-            )}
-            {book.language && (
-              <MetaItem icon={<FileText size={14} />} label="Language" value={book.language.toUpperCase()} />
-            )}
-          </div>
-
-          {/* Genres */}
-          {book.genres && book.genres.length > 0 && (
-            <div style={styles.genreRow}>
-              <Tag size={13} color="#6b7280" />
-              {book.genres.map((g) => (
-                <span key={g} style={styles.genrePill}>{g}</span>
-              ))}
-            </div>
-          )}
-
-          {/* Description */}
-          {book.description && (
-            <p style={styles.description}>{book.description}</p>
-          )}
-
-          {/* Actions */}
-          <div style={styles.actions}>
-            <button style={styles.rateBtn} onClick={() => setShowRate(true)}>
-              <Star size={15} />
-              Rate & Review
-            </button>
-            <button
-              style={styles.deleteBtn}
-              onClick={() => {
-                if (confirm(`Delete "${book.title}"?`)) deleteMutation.mutate();
-              }}
-            >
-              Delete book
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {showRate && userId && (
-        <RateReviewModal
-          book={book}
-          userId={userId}
-          onClose={() => setShowRate(false)}
-          onSubmitted={() => {
-            setShowRate(false);
-            queryClient.invalidateQueries({ queryKey: ["bookStats", bookId] });
-          }}
-        />
-      )}
-    </div>
-  );
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useQuery,useMutation,useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, PenLine, Star, ArrowRight } from 'lucide-react';
+import { booksApi } from '../api/books';
+import { analyticsApi } from '../api/analytics';
+import { ratingsApi } from '../api/ratings';
+import { ragApi } from '../api/rag';
+import { useAuth } from '../context/AuthContext';
+import { RateReviewModal } from '../components/RateReviewModal';
+import { LoadState } from '../components/Editorial';
+export function BookDetailPage(){
+  const{bookId=''}=useParams();const{userId}=useAuth();const navigate=useNavigate();const cache=useQueryClient();
+  const[rate,setRate]=useState(false);const[failedCover,setFailedCover]=useState(false);
+  const book=useQuery({queryKey:['book',bookId],queryFn:()=>booksApi.get(bookId)});
+  const stats=useQuery({queryKey:['bookStats',bookId],queryFn:()=>analyticsApi.bookStats(bookId)});
+  const reviews=useQuery({queryKey:['bookReviews',bookId],queryFn:()=>ratingsApi.bookReviews(bookId)});
+  const remove=useMutation({mutationFn:()=>booksApi.delete(bookId),onSuccess:()=>{void cache.invalidateQueries({queryKey:['books']});navigate('/books');}});
+  if(book.isPending||book.isError)return <LoadState loading={book.isPending} error={book.isError} retry={()=>book.refetch()}/>;
+  const b=book.data;
+  return <section className="book-detail"><Link className="text-link" to="/books"><ArrowLeft size={15}/>Back to the library</Link><div className="book-detail-hero"><div className="detail-cover-stage">{b.coverImageUrl&&!failedCover?<img src={b.coverImageUrl} alt={`Cover of ${b.title}`} onError={()=>setFailedCover(true)}/>:<div className="detail-type-cover"><small>NOVELIST LIBRARY</small><strong>{b.title}</strong><span>{b.author}</span></div>}</div><div><p className="eyebrow">{b.genres?.join(' / ')||'From the library'}</p><h1>{b.title}</h1><p className="detail-author">by {b.author}</p>{stats.isError?<p className="small-note">Ratings unavailable right now.</p>:<p className="rating-inline"><Star size={17} fill="currentColor"/>{stats.data?.averageRating?.toFixed(1)||'Not yet rated'}<span>· {stats.data?.totalRatings??0} ratings</span></p>}<dl className="book-facts">{b.publishedYear&&<div><dt>Published</dt><dd>{b.publishedYear}</dd></div>}{b.pageCount&&<div><dt>Length</dt><dd>{b.pageCount} pages</dd></div>}{b.language&&<div><dt>Language</dt><dd>{b.language.toUpperCase()}</dd></div>}{b.isbn&&<div><dt>ISBN</dt><dd>{b.isbn}</dd></div>}</dl><button className="ink-button" onClick={()=>setRate(true)}><PenLine size={16}/>Write a review</button></div></div><div className="detail-columns"><div><section className="about-book"><p className="eyebrow">Inside the cover</p><h2>About this book</h2><p>{b.description||'There’s no description for this book yet. Its next reader might have something to say.'}</p></section><section><div className="section-rule"><span>Readers’ perspectives</span><button className="text-link" onClick={()=>setRate(true)}>Add yours ↗</button></div>{reviews.isPending||reviews.isError?<LoadState loading={reviews.isPending} error={reviews.isError} retry={()=>reviews.refetch()}/>:reviews.data.length?reviews.data.map(r=><article className="reader-review" key={r.userId}><div><h3>{r.userName}{r.userId===userId?' · You':''}</h3><small>{r.timestamp?new Date(r.timestamp).toLocaleDateString():''}</small></div><span className="rating-inline"><Star size={14} fill="currentColor"/>{r.rating} / 5</span><p className="review-text">{r.review||'This reader left a rating.'}</p></article>):<div className="editorial-empty"><h3>The conversation starts with you.</h3><p>Be the first to share what stayed with you.</p></div>}</section></div><aside><div className="writing-invitation"><p className="eyebrow">More than a star rating</p><h2>A book can be<br/>the beginning.</h2><p>Have a longer thought to explore? Give it room in your journal.</p><Link className="ink-button" to="/write">Start a story <ArrowRight size={15}/></Link></div><ContentTools key={bookId} bookId={bookId} initialContent={b.content||''}/><details className="book-management"><summary>Manage this book</summary><p>Deleting removes this book and its ratings from the shared library.</p><button className="danger-button" disabled={remove.isPending} onClick={()=>{if(window.confirm(`Delete “${b.title}” and its ratings from the shared library?`))remove.mutate();}}>{remove.isPending?'Deleting…':'Delete book'}</button>{remove.isError&&<p role="alert">Couldn’t delete this book. Please try again.</p>}</details></aside></div>{rate&&userId&&<RateReviewModal book={b} userId={userId} onClose={()=>setRate(false)} onSubmitted={()=>setRate(false)}/>}</section>;
 }
-
-function MetaItem({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div style={metaStyles.item}>
-      {icon}
-      <span style={metaStyles.label}>{label}</span>
-      <span style={metaStyles.value}>{value}</span>
-    </div>
-  );
+function ContentTools({bookId,initialContent}:{bookId:string;initialContent:string}){
+  const[text,setText]=useState(initialContent);const[dirty,setDirty]=useState(false);const cache=useQueryClient();
+  const save=useMutation({mutationFn:()=>booksApi.update(bookId,{content:text}),onSuccess:()=>{setDirty(false);void cache.invalidateQueries({queryKey:['book',bookId]});}});
+  const index=useMutation({mutationFn:()=>ragApi.index(bookId)});
+  return <details className="book-management"><summary>Search inside this book</summary><p>Add text you have permission to use, save it, then index it to make passages searchable.</p><label htmlFor="book-content">Book content</label><textarea id="book-content" value={text} maxLength={1000000} onChange={e=>{setText(e.target.value);setDirty(true);save.reset();index.reset();}} rows={8}/><div className="paper-actions"><button className="outline-button" disabled={save.isPending||index.isPending||!dirty} onClick={()=>save.mutate()}>{save.isPending?'Saving…':'Save text'}</button><button className="outline-button" disabled={dirty||save.isPending||index.isPending||!text.trim()} onClick={()=>index.mutate()}>{index.isPending?'Indexing…':'Index passages'}</button></div><p role="status">{save.isError?'Couldn’t save the text.':index.isError?'Indexing failed. Please try again.':index.isSuccess?'Passages are ready to search.':save.isSuccess?'Text saved. Index it to update search.':''}</p></details>;
 }
-const metaStyles: Record<string, React.CSSProperties> = {
-  item: { display: "flex", alignItems: "center", gap: 6, color: "#6b7280" },
-  label: { fontSize: 12, fontWeight: 500 },
-  value: { fontSize: 12, color: "#374151" },
-};
-
-const styles: Record<string, React.CSSProperties> = {
-  loading: { color: "#9ca3af", marginTop: 60, textAlign: "center" },
-  back: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    color: "#6b7280",
-    fontSize: 14,
-    padding: 0,
-    marginBottom: 24,
-  },
-  layout: { display: "flex", gap: 40, alignItems: "flex-start", flexWrap: "wrap" },
-  coverWrap: { flexShrink: 0 },
-  coverImg: { width: 200, height: 280, objectFit: "cover", borderRadius: 10 },
-  coverPlaceholder: {
-    width: 200,
-    height: 280,
-    background: "#eef2ff",
-    borderRadius: 10,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  coverInitial: { fontSize: 64, fontWeight: 700, color: "#6366f1" },
-  details: { flex: 1, minWidth: 260 },
-  title: { fontSize: 24, fontWeight: 700, color: "#111827", margin: "0 0 6px" },
-  author: { fontSize: 15, color: "#6b7280", margin: "0 0 16px" },
-  ratingBox: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    background: "#fffbeb",
-    border: "1px solid #fde68a",
-    borderRadius: 8,
-    padding: "10px 14px",
-    marginBottom: 16,
-    width: "fit-content",
-  },
-  ratingBig: { display: "flex", alignItems: "center", gap: 6 },
-  ratingNum: { fontSize: 20, fontWeight: 700, color: "#92400e" },
-  ratingCount: { fontSize: 13, color: "#92400e" },
-  metaGrid: { display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 16 },
-  genreRow: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    flexWrap: "wrap",
-    marginBottom: 16,
-  },
-  genrePill: {
-    fontSize: 12,
-    background: "#f1f5f9",
-    color: "#475569",
-    borderRadius: 4,
-    padding: "3px 8px",
-  },
-  description: { fontSize: 14, color: "#374151", lineHeight: 1.7, marginBottom: 24 },
-  actions: { display: "flex", gap: 10, flexWrap: "wrap" },
-  rateBtn: {
-    display: "flex",
-    alignItems: "center",
-    gap: 6,
-    background: "#6366f1",
-    color: "#fff",
-    border: "none",
-    borderRadius: 8,
-    padding: "9px 16px",
-    fontSize: 14,
-    fontWeight: 600,
-    cursor: "pointer",
-  },
-  deleteBtn: {
-    background: "#fff",
-    color: "#dc2626",
-    border: "1px solid #fca5a5",
-    borderRadius: 8,
-    padding: "9px 16px",
-    fontSize: 14,
-    cursor: "pointer",
-  },
-};

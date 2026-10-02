@@ -5,6 +5,7 @@ from fastapi import Depends, Request
 from app.core.config import Settings, get_settings
 from app.infrastructure.messaging import EventPublisher
 from app.infrastructure.neo4j import NovelistRepository
+from app.modules.articles.service import ArticleService
 from app.modules.auth.service import AuthService
 from app.modules.analytics.service import AnalyticsService
 from app.modules.books.service import BookService
@@ -72,3 +73,10 @@ RecommendationServiceDep = Annotated[RecommendationService, Depends(get_recommen
 ProfileServiceDep = Annotated[ProfileService, Depends(get_profile_service)]
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 RagServiceDep = Annotated[RagService, Depends(get_rag_service)]
+
+
+def get_article_service(repository: Repo) -> ArticleService:
+    return ArticleService(repository)
+
+
+ArticleServiceDep = Annotated[ArticleService, Depends(get_article_service)]

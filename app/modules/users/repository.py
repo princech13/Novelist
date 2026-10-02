@@ -3,7 +3,7 @@ import json
 from typing import Any
 from uuid import uuid4
 
-from app.infrastructure.neo4j.base import ConflictError, NotFoundError, node, now
+from app.infrastructure.neo4j.base import ConflictError, NotFoundError, node, now, to_native
 
 
 class UserRepositoryMixin:
@@ -44,7 +44,8 @@ class UserRepositoryMixin:
             raise NotFoundError(f"User not found with id: {user_id}")
         ratings = []
         for row in self._all("MATCH (u:User {userId: $user_id})-[r:RATED]->(b:Book) RETURN r, b", user_id=user_id):
-            relation, book = dict(row["r"]), dict(row["b"])
+            relation = to_native(dict(row["r"]))
+            book = to_native(dict(row["b"]))
             ratings.append({"book": book, "rating": relation["rating"], "review": relation.get("review"), "timestamp": relation.get("timestamp"), "helpfulCount": relation.get("helpful", 0)})
         return self._user_out(node(record), ratings)
 

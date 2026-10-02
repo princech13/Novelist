@@ -249,17 +249,17 @@ def test_get_nonexistent_user_returns_404(client):
     assert r.status_code == 404
 
 
-def test_rate_with_nonexistent_user_returns_404(client):
+def test_rate_for_non_owner_returns_403(client):
     h = _register_and_login(client)
     book = _make_book(client, h)
     r = client.post(f"/api/v1/users/{uuid.uuid4()}/ratings/{book['bookId']}",
                     json={"rating": 4}, headers=h)
-    assert r.status_code == 404
+    assert r.status_code == 403
 
 
 def test_rate_with_nonexistent_book_returns_404(client):
     h = _register_and_login(client)
-    user = _make_user(client, h)
+    user = client.get("/api/v1/me", headers=h).json()
     r = client.post(f"/api/v1/users/{user['userId']}/ratings/{uuid.uuid4()}",
                     json={"rating": 4}, headers=h)
     assert r.status_code == 404
@@ -328,7 +328,7 @@ def test_search_returns_empty_when_no_match(client):
 
 def test_update_user_preferences(client):
     h = _register_and_login(client)
-    user = _make_user(client, h)
+    user = client.get("/api/v1/me", headers=h).json()
     uid = user["userId"]
 
     prefs = {"preferences": {"favoriteGenres": ["fantasy", "sci-fi"], "annualReadingGoal": 12}}
@@ -339,11 +339,11 @@ def test_update_user_preferences(client):
     assert stored["annualReadingGoal"] == 12
 
 
-def test_update_preferences_on_nonexistent_user_returns_404(client):
+def test_update_preferences_for_non_owner_returns_403(client):
     h = _register_and_login(client)
     prefs = {"preferences": {"favoriteGenres": ["horror"]}}
     r = client.put(f"/api/v1/users/{uuid.uuid4()}/preferences", json=prefs, headers=h)
-    assert r.status_code == 404
+    assert r.status_code == 403
 
 
 # ===========================================================================
