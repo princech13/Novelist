@@ -13,6 +13,7 @@ export interface Book {
   isbn?: string;
   publishedYear?: number;
   description?: string;
+  content?: string;
   language?: string;
   pageCount?: number;
   coverImageUrl?: string;
@@ -56,6 +57,14 @@ export interface RatingOut {
   review?: string;
   timestamp?: string;
   helpfulCount?: number;
+}
+
+export interface BookReview {
+  userId: string;
+  userName: string;
+  rating: number;
+  review?: string;
+  timestamp?: string;
 }
 
 // ── Users ────────────────────────────────────────────────────────────────────

@@ -1,6 +1,13 @@
+import os
 from functools import lru_cache
 from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Guarantee a writable HuggingFace cache directory even when the container
+# user has no writable home.  Set before any import that touches HF Hub.
+if not os.environ.get("HF_HOME"):
+    _hf_cache = os.path.join(os.path.dirname(__file__), "..", "..", ".cache", "huggingface")
+    os.environ["HF_HOME"] = os.path.abspath(_hf_cache)
 
 
 class Settings(BaseSettings):

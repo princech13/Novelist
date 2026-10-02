@@ -42,12 +42,17 @@ export function AddBookModal({ onClose, onCreated }: Props) {
     <div style={overlay}>
       <div style={styles.modal}>
         <div style={styles.header}>
-          <h2 style={styles.title}>Add New Book</h2>
+          <div>
+            <h2 style={styles.title}>Add New Book</h2>
+            <p style={styles.subtitle}>Fill in the details for your new book</p>
+          </div>
           <button style={styles.closeBtn} onClick={onClose}>
             <X size={18} />
           </button>
         </div>
+
         {error && <div style={styles.errorBanner}>{error}</div>}
+
         <form onSubmit={submit} style={styles.form}>
           <Field label="Title *">
             <input style={styles.input} value={form.title} onChange={set("title")} required placeholder="e.g. Clean Code" />
@@ -111,50 +116,109 @@ export function AddBookModal({ onClose, onCreated }: Props) {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
-      <label style={{ fontSize: 12, fontWeight: 500, color: "#374151" }}>{label}</label>
+    <div style={{ display: "flex", flexDirection: "column", gap: 5, flex: 1 }}>
+      <label style={{ fontSize: 11, fontWeight: 600, color: "#4B5155", letterSpacing: "0.04em", textTransform: "uppercase" as const }}>{label}</label>
       {children}
     </div>
   );
 }
 
 const overlay: React.CSSProperties = {
-  position: "fixed", inset: 0,
-  background: "rgba(0,0,0,0.4)",
-  display: "flex", alignItems: "center", justifyContent: "center",
-  zIndex: 1000, padding: 16,
+  position: "fixed",
+  inset: 0,
+  background: "rgba(31,36,33,0.3)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 1000,
+  padding: 16,
+  backdropFilter: "blur(4px)",
 };
 
 const styles: Record<string, React.CSSProperties> = {
   modal: {
-    background: "#fff",
-    borderRadius: 12,
+    background: "#FFFFFF",
+    borderRadius: 16,
+    border: "1px solid #EBEAE5",
+    boxShadow: "0 16px 48px rgba(0,0,0,0.12)",
     width: "100%",
     maxWidth: 520,
     maxHeight: "90vh",
     overflowY: "auto",
-    padding: 28,
+    padding: 32,
   },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
-  title: { fontSize: 17, fontWeight: 700, color: "#111827", margin: 0 },
-  closeBtn: { background: "none", border: "none", cursor: "pointer", color: "#9ca3af", padding: 4 },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottom: "1px solid #F4F3F0",
+  },
+  title: {
+    fontFamily: "'Playfair Display', Georgia, serif",
+    fontSize: 18,
+    fontWeight: 700,
+    color: "#1F2421",
+    margin: "0 0 3px",
+  },
+  subtitle: {
+    fontSize: 12,
+    color: "#9CA3A8",
+    margin: 0,
+  },
+  closeBtn: {
+    background: "#F8F7F4",
+    border: "1px solid #EBEAE5",
+    cursor: "pointer",
+    color: "#9CA3A8",
+    padding: 6,
+    borderRadius: 7,
+    display: "flex",
+    alignItems: "center",
+  },
   errorBanner: {
-    background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c",
-    borderRadius: 8, padding: "9px 12px", fontSize: 13, marginBottom: 14,
+    background: "#FEF2F2",
+    border: "1px solid #FECACA",
+    color: "#B91C1C",
+    borderRadius: 8,
+    padding: "9px 12px",
+    fontSize: 13,
+    marginBottom: 14,
   },
-  form: { display: "flex", flexDirection: "column", gap: 12 },
+  form: { display: "flex", flexDirection: "column", gap: 14 },
   row: { display: "flex", gap: 12 },
   input: {
-    border: "1px solid #d1d5db", borderRadius: 8, padding: "8px 10px",
-    fontSize: 13, outline: "none", color: "#111827", width: "100%", boxSizing: "border-box",
+    border: "1.5px solid #E5E3DC",
+    borderRadius: 8,
+    padding: "9px 11px",
+    fontSize: 13,
+    outline: "none",
+    color: "#1F2421",
+    background: "#FDFCF9",
+    width: "100%",
+    boxSizing: "border-box" as const,
+    transition: "border-color 0.15s",
   },
-  footer: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 6 },
+  footer: { display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 4 },
   cancelBtn: {
-    background: "#f9fafb", border: "1px solid #d1d5db", borderRadius: 8,
-    padding: "8px 16px", fontSize: 13, cursor: "pointer", color: "#374151",
+    background: "#F8F7F4",
+    border: "1.5px solid #EBEAE5",
+    borderRadius: 8,
+    padding: "9px 18px",
+    fontSize: 13,
+    cursor: "pointer",
+    color: "#6C757D",
+    fontWeight: 500,
   },
   submitBtn: {
-    background: "#6366f1", color: "#fff", border: "none", borderRadius: 8,
-    padding: "8px 18px", fontSize: 13, fontWeight: 600, cursor: "pointer",
+    background: "#E05347",
+    color: "#fff",
+    border: "none",
+    borderRadius: 8,
+    padding: "9px 20px",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
   },
 };

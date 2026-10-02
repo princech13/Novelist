@@ -17,3 +17,11 @@ class RatingOut(APIModel):
     review: str | None = None
     timestamp: datetime | None = None
     helpful_count: int | None = None
+
+
+class BookReviewOut(APIModel):
+    user_id: str
+    user_name: str
+    rating: int
+    review: str | None = None
+    timestamp: datetime | None = None

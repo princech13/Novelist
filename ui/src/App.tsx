@@ -8,6 +8,8 @@ import { BooksPage } from "./pages/BooksPage";
 import { BookDetailPage } from "./pages/BookDetailPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { TrendingPage } from "./pages/TrendingPage";
+import { ArticlesPage, ArticlePage, AuthorPage } from "./pages/ArticlesPage";
+import { JournalPage, WriterPage } from "./pages/JournalPage";
 import { ChatPage } from "./pages/ChatPage";
 
 const queryClient = new QueryClient({
@@ -26,6 +28,10 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
 
+            <Route path="/articles" element={<AppShell><ArticlesPage /></AppShell>} />
+            <Route path="/articles/:articleId" element={<AppShell><ArticlePage /></AppShell>} />
+            <Route path="/authors/:authorId" element={<AppShell><AuthorPage /></AppShell>} />
+
             {/* Protected — wrapped in AppShell */}
             <Route element={<ProtectedRoute />}>
               <Route
@@ -33,6 +39,9 @@ export default function App() {
                 element={
                   <AppShell>
                     <Routes>
+                      <Route path="/journal" element={<JournalPage />} />
+                      <Route path="/write" element={<WriterPage />} />
+                      <Route path="/write/:draftId" element={<WriterPage />} />
                       <Route path="/books" element={<BooksPage />} />
                       <Route path="/books/:bookId" element={<BookDetailPage />} />
                       <Route path="/trending" element={<TrendingPage />} />

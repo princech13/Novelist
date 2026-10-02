@@ -19,6 +19,7 @@ from .core.logging import configure_logging
 from .infrastructure.messaging import EventPublisher
 from .infrastructure.neo4j import NovelistRepository
 from .infrastructure.neo4j.base import ConflictError, NotFoundError
+from .modules.articles.router import router as articles_router
 from .modules.analytics import router as analytics
 from .modules.auth import router as auth
 from .modules.books import router as books
@@ -62,6 +63,7 @@ app.add_middleware(
 )
 
 # Register API routers
+app.include_router(articles_router)
 app.include_router(auth.router)
 app.include_router(books.router)
 app.include_router(users.router)

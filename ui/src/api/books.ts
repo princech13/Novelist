@@ -31,4 +31,7 @@ export const booksApi = {
 
   delete: (bookId: string): Promise<void> =>
     api.delete(`/api/v1/books/${bookId}`).then(() => undefined),
+
+  myBooks: (page = 0, size = 20): Promise<PageOut<Book>> =>
+    api.get("/api/v1/me/books", { params: { page, size } }).then((r) => r.data),
 };

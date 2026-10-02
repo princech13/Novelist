@@ -42,6 +42,7 @@ class BookUpdate(APIModel):
 
 
 class BookOut(APIModel):
+    content: str | None = None
     book_id: str
     title: str
     author: str

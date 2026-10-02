@@ -2,6 +2,8 @@
 
 Novelist is a full-stack book-management application. A **Python / FastAPI** backend handles books, users, ratings, recommendations, and semantic search; a **React / Vite** frontend provides a browser UI for all those features.
 
+For the reviewed runtime structure, data flows, and known gaps, see [Architecture](spec/ARCHITECTURE.md). The [Architectural decision records](spec/ARCHITECTURAL_DECISIONS.md) explain the important choices, tradeoffs, and implementation evidence.
+
 ## Project structure
 
 ```
@@ -113,7 +115,8 @@ cd ui && npm run dev
 | **Add Book** | Modal form: title, author, year, pages, genres, ISBN, cover URL, description |
 | **Trending** | Top-10 books by rating×count; genre popularity bar chart |
 | **My Profile** | Identity card + complete reading history with stars and reviews |
-| **AI Search** | Chat-style RAG interface — semantic search over indexed book content |
+| **Passage Search** | Semantic search over indexed book content |
+| **Stories & Journal** | Public articles and author pages; private account drafts, Markdown preview, explicit publishing and unpublishing |
 
 ## API endpoints
 
@@ -123,6 +126,7 @@ cd ui && npm run dev
 | **Books** | `POST /api/v1/books`, `GET /api/v1/books`, `GET /api/v1/books/{bookId}`, `PUT /api/v1/books/{bookId}`, `DELETE /api/v1/books/{bookId}`, `GET /api/v1/books/search` |
 | **Users** | `POST /api/v1/users`, `GET /api/v1/users`, `GET /api/v1/users/{userId}`, `PUT /api/v1/users/{userId}`, `DELETE /api/v1/users/{userId}`, `GET /api/v1/users/search`, `PUT /api/v1/users/{userId}/preferences` |
 | **Ratings** | `POST /api/v1/users/{userId}/ratings/{bookId}` |
+| **Articles** | `GET /api/v1/articles`, `GET /api/v1/articles/{articleId}`, `PUT /api/v1/articles/{articleId}`, `GET /api/v1/me/articles`, `GET /api/v1/me/articles/{articleId}`, `GET /api/v1/authors/{userId}` |
 | **Profile** | `GET /api/v1/me` |
 | **Analytics** | `GET /api/v1/analytics/books/{bookId}/stats`, `GET /api/v1/analytics/books/trending`, `GET /api/v1/analytics/genres` |
 | **Recommendations** | `GET /api/v1/recommendations/users/{userId}` |
@@ -149,7 +153,7 @@ cd ui && npm run dev
 pytest
 ```
 
-58 tests across `tests/test_api_integration.py`, `tests/test_api_coverage.py`, and `tests/unit/test_services.py`.
+71 tests pass, including article contracts in `tests/test_articles.py`. Infrastructure is mocked; live Neo4j adapter verification remains pending. See [article publishing](spec/ARTICLE_PUBLISHING.md) and [UI review](spec/UI_REVIEW.md) for this phase and its limits.
 
 ## Configuration
 
