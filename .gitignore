@@ -49,3 +49,29 @@ __pycache__/
 .cache/
 node_modules/
 
+# Local environment settings (keep the shared example)
+.env
+.env.*
+!.env.example
+
+# Local specifications and generated review artifacts
+/spec/
+/artifacts/
+/.bob/
+
+# Frontend build output
+/ui/dist/
+*.tsbuildinfo
+
+# Python tooling and coverage output
+*.pyo
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.egg-info/
+
+# Local logs
+*.log
