@@ -1,25 +1,19 @@
 """Extended integration tests covering: 404s, 401s, analytics, recommendations,
-user preferences, search filters, RAG endpoints, and CORS headers."""
+user preferences, search filters, and CORS headers."""
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app import main as app_main
-from app.core.dependencies import get_publisher, get_repository
+from app.core.dependencies import get_repository
 from app.infrastructure.neo4j.base import NotFoundError
 
 
 # ---------------------------------------------------------------------------
 # Shared fake infrastructure (mirrors test_api_integration.py FakeRepo)
 # ---------------------------------------------------------------------------
-
-class FakePublisher:
-    def publish(self, *args, **kwargs):
-        return None
-
 
 class FakeRepo:
     def __init__(self):
@@ -45,7 +39,7 @@ class FakeRepo:
             if snake in props:
                 props[camel] = props.pop(snake)
         props.update({"bookId": book_id, "createdAt": now, "updatedAt": now,
-                      "averageRating": None, "totalRatings": None, "hasEmbedding": None})
+                      "averageRating": None, "totalRatings": None})
         self.books[book_id] = props
         return props
 
@@ -172,7 +166,6 @@ def client():
     fake_repo = FakeRepo()
     app = app_main.app
     app.dependency_overrides[get_repository] = lambda: fake_repo
-    app.dependency_overrides[get_publisher] = lambda: FakePublisher()
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -440,88 +433,6 @@ def test_recommendations_limit_validation(client):
     user = _make_user(client, h)
     r = client.get(f"/api/v1/recommendations/users/{user['userId']}?limit=0", headers=h)
     assert r.status_code == 400
-
-
-# ===========================================================================
-# RAG endpoints
-# ===========================================================================
-
-def test_rag_index_returns_chunk_count(client):
-    h = _register_and_login(client)
-    book = _make_book(client, h, content="The spice must flow. " * 50)
-
-    # Patch RagService so tests don't download the embedding model
-    from app.core.dependencies import get_rag_service
-    from app.modules.rag.service import RagService
-
-    mock_svc = MagicMock(spec=RagService)
-    mock_svc.index_book.return_value = {
-        "book_id": book["bookId"],
-        "chunks_indexed": 5,
-        "model": "all-MiniLM-L6-v2",
-    }
-    app_main.app.dependency_overrides[get_rag_service] = lambda: mock_svc
-
-    r = client.post("/api/v1/rag/index", json={"bookId": book["bookId"]}, headers=h)
-    assert r.status_code == 201
-    body = r.json()
-    assert body["bookId"] == book["bookId"]
-    assert body["chunksIndexed"] == 5
-    assert body["model"] == "all-MiniLM-L6-v2"
-
-    del app_main.app.dependency_overrides[get_rag_service]
-
-
-def test_rag_index_book_without_content_returns_404(client):
-    h = _register_and_login(client)
-    book = _make_book(client, h)  # no content field
-
-    from app.core.dependencies import get_rag_service
-    from app.modules.rag.service import RagService
-
-    mock_svc = MagicMock(spec=RagService)
-    mock_svc.index_book.side_effect = NotFoundError("Book has no content")
-    app_main.app.dependency_overrides[get_rag_service] = lambda: mock_svc
-
-    r = client.post("/api/v1/rag/index", json={"bookId": book["bookId"]}, headers=h)
-    assert r.status_code == 404
-
-    del app_main.app.dependency_overrides[get_rag_service]
-
-
-def test_rag_search_returns_results(client):
-    h = _register_and_login(client)
-
-    from app.core.dependencies import get_rag_service
-    from app.modules.rag.service import RagService
-
-    mock_svc = MagicMock(spec=RagService)
-    mock_svc.search.return_value = [
-        {"bookId": "b1", "title": "Dune", "author": "Herbert",
-         "chunkIndex": 0, "text": "The spice must flow.", "score": 0.95}
-    ]
-    app_main.app.dependency_overrides[get_rag_service] = lambda: mock_svc
-
-    r = client.post("/api/v1/rag/search", json={"query": "spice trade", "topK": 3}, headers=h)
-    assert r.status_code == 200
-    body = r.json()
-    assert body["query"] == "spice trade"
-    assert len(body["results"]) == 1
-    assert body["results"][0]["title"] == "Dune"
-    assert body["results"][0]["score"] == 0.95
-
-    del app_main.app.dependency_overrides[get_rag_service]
-
-
-def test_rag_search_empty_query_returns_400(client):
-    h = _register_and_login(client)
-    r = client.post("/api/v1/rag/search", json={"query": "", "topK": 5}, headers=h)
-    assert r.status_code == 400
-
-
-def test_rag_search_requires_auth(client):
-    r = client.post("/api/v1/rag/search", json={"query": "dragons", "topK": 5})
-    assert r.status_code == 401
 
 
 # ===========================================================================

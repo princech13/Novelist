@@ -33,7 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main id="main-content" className="editorial-main">{children}</main>
-      <footer className="site-footer"><Link className="footer-brand" to="/books">novelist.</Link><span>A little space for books. A little room for thought.</span><Link to="/chat">Search inside books ↗</Link></footer>
+      <footer className="site-footer"><Link className="footer-brand" to="/books">novelist.</Link><span>A little space for books. A little room for thought.</span><Link to="/articles">Read stories ↗</Link></footer>
     </div>
   );
 }

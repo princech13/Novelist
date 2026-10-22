@@ -10,7 +10,6 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { TrendingPage } from "./pages/TrendingPage";
 import { ArticlesPage, ArticlePage, AuthorPage } from "./pages/ArticlesPage";
 import { JournalPage, WriterPage } from "./pages/JournalPage";
-import { ChatPage } from "./pages/ChatPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -46,7 +45,6 @@ export default function App() {
                       <Route path="/books/:bookId" element={<BookDetailPage />} />
                       <Route path="/trending" element={<TrendingPage />} />
                       <Route path="/profile" element={<ProfilePage />} />
-                      <Route path="/chat" element={<ChatPage />} />
                       <Route path="*" element={<Navigate to="/books" replace />} />
                     </Routes>
                   </AppShell>

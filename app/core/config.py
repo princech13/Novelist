@@ -1,13 +1,6 @@
-import os
 from functools import lru_cache
 from pydantic import computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-# Guarantee a writable HuggingFace cache directory even when the container
-# user has no writable home.  Set before any import that touches HF Hub.
-if not os.environ.get("HF_HOME"):
-    _hf_cache = os.path.join(os.path.dirname(__file__), "..", "..", ".cache", "huggingface")
-    os.environ["HF_HOME"] = os.path.abspath(_hf_cache)
 
 
 class Settings(BaseSettings):
@@ -20,12 +13,6 @@ class Settings(BaseSettings):
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "password"
-
-    rabbitmq_enabled: bool = True
-    rabbitmq_host: str = "localhost"
-    rabbitmq_port: int = 5672
-    rabbitmq_user: str = "novelist"
-    rabbitmq_password: str = "password"
 
     jwt_secret_key: str = "change-this-secret"
     jwt_algorithm: str = "HS256"
@@ -44,12 +31,6 @@ class Settings(BaseSettings):
             import json
             return json.loads(value)
         return [v.strip() for v in value.split(",") if v.strip()]
-
-    # RAG
-    rag_embedding_model: str = "all-MiniLM-L6-v2"  # 384-dim, fast local model
-    rag_chunk_size: int = 512        # characters per chunk
-    rag_chunk_overlap: int = 64      # overlap between consecutive chunks
-    rag_top_k: int = 5               # default number of results returned
 
 
 @lru_cache

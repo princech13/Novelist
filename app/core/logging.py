@@ -27,7 +27,7 @@ def configure_logging(log_level: str = "INFO") -> None:
 
     # --- stdlib root logger ---------------------------------------------------
     # structlog forwards to stdlib; set the root level here so stdlib handlers
-    # (e.g. uvicorn, pika) respect the same threshold.
+    # (e.g. uvicorn) respect the same threshold.
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,

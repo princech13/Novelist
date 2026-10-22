@@ -57,4 +57,3 @@ class BookOut(APIModel):
     updated_at: datetime | None = None
     average_rating: float | None = None
     total_ratings: int | None = None
-    has_embedding: bool | None = None

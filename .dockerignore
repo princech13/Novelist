@@ -1,0 +1,13 @@
+.git
+.env
+.env.*
+.venv
+**/__pycache__
+.pytest_cache
+.cache
+.idea
+.vscode
+.bob
+artifacts
+spec
+ui

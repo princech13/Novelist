@@ -7,14 +7,6 @@ from app.modules.books.service import BookService
 from app.modules.ratings.service import RatingService
 
 
-class SpyPublisher:
-    def __init__(self) -> None:
-        self.events: list[tuple[str, dict]] = []
-
-    def publish(self, routing_key: str, payload: dict) -> None:
-        self.events.append((routing_key, payload))
-
-
 class BookRepositoryStub:
     def create_book(self, payload: dict) -> dict:
         return {"bookId": "book-1", **payload}
@@ -55,9 +47,8 @@ class RatingRepositoryStub:
         return {"book": {"bookId": book_id}, "rating": rating, "review": review}
 
 
-def test_book_service_publishes_events_for_mutations() -> None:
-    publisher = SpyPublisher()
-    service = BookService(BookRepositoryStub(), publisher)
+def test_book_service_mutations() -> None:
+    service = BookService(BookRepositoryStub())
 
     created = service.create({"title": "Clean Architecture", "author": "Martin"})
     updated = service.update("book-1", {"title": "Updated"})
@@ -65,7 +56,6 @@ def test_book_service_publishes_events_for_mutations() -> None:
 
     assert created["bookId"] == "book-1"
     assert updated["title"] == "Updated"
-    assert [event[0] for event in publisher.events] == ["book.created", "book.updated", "book.deleted"]
 
 
 def test_auth_service_registers_hashed_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -102,13 +92,9 @@ def test_auth_service_returns_token_for_valid_credentials(monkeypatch: pytest.Mo
     assert token["token_type"] == "bearer"
 
 
-def test_rating_service_publishes_rating_added_event() -> None:
-    publisher = SpyPublisher()
+def test_rating_service_adds_review() -> None:
 
-    rating = RatingService(RatingRepositoryStub(), publisher).add("user-1", "book-1", 5, "Excellent")
+    rating = RatingService(RatingRepositoryStub()).add("user-1", "book-1", 5, "Excellent")
 
     assert rating["rating"] == 5
-    assert publisher.events == [(
-        "rating.added",
-        {"userId": "user-1", "bookId": "book-1", "rating": 5, "review": "Excellent"},
-    )]
+    assert rating["review"] == "Excellent"
