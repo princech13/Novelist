@@ -317,16 +317,6 @@
       "metaSortKey": 1000
     },
     {
-      "_id": "req_metrics",
-      "_type": "request",
-      "parentId": "fld_health",
-      "name": "Prometheus Metrics",
-      "url": "{{ base_url }}/actuator/prometheus",
-      "method": "GET",
-      "headers": [],
-      "metaSortKey": 2000
-    },
-    {
       "_id": "req_2753666d319b4f77868f",
       "_type": "request",
       "parentId": "fld_books",

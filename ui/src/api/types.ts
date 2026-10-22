@@ -22,7 +22,6 @@ export interface Book {
   updatedAt?: string;
   averageRating?: number;
   totalRatings?: number;
-  hasEmbedding?: boolean;
 }
 
 export interface BookCreate {
@@ -97,19 +96,4 @@ export interface BookStats {
 export interface GenreCount {
   genre: string;
   count: number;
-}
-
-// ── RAG ──────────────────────────────────────────────────────────────────────
-export interface RagChunk {
-  bookId: string;
-  title: string;
-  author: string;
-  chunkIndex: number;
-  text: string;
-  score: number;
-}
-
-export interface RagSearchOut {
-  query: string;
-  results: RagChunk[];
 }

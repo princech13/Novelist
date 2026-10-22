@@ -7,12 +7,6 @@ from fastapi.testclient import TestClient
 from app import main as app_main
 
 
-class FakePublisher:
-    def publish(self, *args, **kwargs):
-        # no-op publisher for tests
-        return None
-
-
 class FakeRepo:
     def __init__(self):
         self.books = {}
@@ -56,7 +50,7 @@ class FakeRepo:
             "updatedAt": now,
             "averageRating": None,
             "totalRatings": None,
-            "hasEmbedding": None,
+
         })
         self.books[book_id] = props
         return props
@@ -174,11 +168,9 @@ def client():
     limiter.reset()
 
     fake_repo = FakeRepo()
-    fake_pub = FakePublisher()
     app = app_main.app
-    from app.core.dependencies import get_repository, get_publisher
+    from app.core.dependencies import get_repository
     app.dependency_overrides[get_repository] = lambda: fake_repo
-    app.dependency_overrides[get_publisher] = lambda: fake_pub
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -374,4 +366,3 @@ def test_search_min_rating_out_of_range_returns_400(client):
     r = client.get("/api/v1/books/search?minRating=6", headers=headers)
     assert r.status_code == 400
     assert any("minRating" in k for k in r.json()["errors"])
-

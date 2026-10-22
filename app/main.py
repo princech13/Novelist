@@ -6,7 +6,6 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -16,14 +15,12 @@ from .core.dependencies import Repo
 from .core.http import error
 from .core.limiter import limiter
 from .core.logging import configure_logging
-from .infrastructure.messaging import EventPublisher
 from .infrastructure.neo4j import NovelistRepository
 from .infrastructure.neo4j.base import ConflictError, NotFoundError
 from .modules.articles.router import router as articles_router
 from .modules.analytics import router as analytics
 from .modules.auth import router as auth
 from .modules.books import router as books
-from .modules.rag.router import router as rag_router
 from .modules.ratings import router as ratings
 from .modules.recommendations import router as recommendations
 from .modules.profile import router as profile
@@ -38,21 +35,18 @@ logger = structlog.get_logger(__name__)
 async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.repository = NovelistRepository(settings)
-    app.state.publisher = EventPublisher(settings)
     try:
         app.state.repository.verify()
     except Exception:
         logger.warning("Neo4j is not reachable at startup; requests will retry the connection.")
     yield
     app.state.repository.close()
-    app.state.publisher.close()
 
 
 app = FastAPI(title="Novelist API", version="1.0", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
-Instrumentator().instrument(app).expose(app, endpoint="/actuator/prometheus", include_in_schema=False)
 
 app.add_middleware(
     CORSMiddleware,
@@ -71,7 +65,6 @@ app.include_router(ratings.router)
 app.include_router(analytics.router)
 app.include_router(recommendations.router)
 app.include_router(profile.router)
-app.include_router(rag_router)
 
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
